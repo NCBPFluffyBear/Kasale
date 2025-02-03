@@ -356,13 +356,27 @@ void removeDeviceFromGroup(Terminal* terminal) {
     terminal->prompt();
 }
 
+void terminalPrintln(Terminal* terminal, const char* format, ...) {
+    va_list args;
+    va_start(args, format);
+    char buffer[256];
+    vsnprintf(buffer, 256, format, args);
+    va_end(args);
+    terminal->println(INFO, buffer);
+}
+
+#define ARRAY_FOREACH(array, size, var) \
+    for (typeof(array[0]) var = array[0]; &var < &array[size]; var++)
+
+char const* boolToOnOff(bool state) { return state ? "On" : "Off"; }
+
 void listAllGroupDevices(Terminal* terminal) {
     for (int groupNum = 0; groupNum < groupUtils.numGroups; groupNum++) {
         ControlGroup* group = groupUtils.groups[groupNum];
         terminal->println(INFO, String(group->name) + ":");
-        for (int i = 0; i < group->groupSize; i++) {
-            KASASmartPlug* p = group->plugs[i];
-            terminal->println(INFO, String("    ") + p->alias + " (" + p->ip_address + ") -- On/Off: " + p->state + " Brightness: " + p->brightness);
+        ARRAY_FOREACH(group->plugs, group->groupSize, p) {
+            terminalPrintln(terminal, "    %s (%s) -- %s Brightness: %d",
+                            p->alias, p->ip_address, boolToOnOff(p->state), p->brightness);
         }
     }
 
@@ -424,16 +438,17 @@ void savePreferences(Terminal* terminal) {
     for (int groupNum = 0; groupNum < groupUtils.numGroups; groupNum++) {
         ControlGroup* group = groupUtils.groups[groupNum];
         // Build key names as <field><groupNum>
-        char groupName[12] = {}; // "groupName", 1-2 digit, null terminator
-        char groupSize[12] = {}; // "groupSize", 1-2 digit, null terminator
-        char groupIps[11] = {}; // "groupSize", 1-2 digit, null terminator
+        char groupName[12]; // "groupName", 1-2 digit, null terminator
+        char groupSize[12]; // "groupSize", 1-2 digit, null terminator
+        char groupIps[11]; // "groupSize", 1-2 digit, null terminator
         sprintf(groupName, "groupName%d", groupNum);
         sprintf(groupSize, "groupSize%d", groupNum);
+        sprintf(groupIps, "groupIps%d", groupNum);
         // Assign pref values
         preferences.putString(groupName, group->name);
         preferences.putInt(groupSize, group->groupSize);
         // Build ip list with format <ip1>,<ip2>,<ip3>...
-        char ipList[10 + MAX_IP_LEN * MAX_GROUPS] = {}; // "groupIps", 1 digit, null terminator, 10 ips of 15 char + splitter
+        char ipList[10 + MAX_IP_LEN * MAX_GROUP_SIZE]; // "groupIps", 1 digit, null terminator, 10 ips of 15 char + splitter
         for (int deviceNum = 0; deviceNum < group->groupSize; deviceNum++) {
             KASASmartPlug* plug = group->plugs[deviceNum];
             strcat(ipList, plug->ip_address);
@@ -462,16 +477,17 @@ void loadPreferences(Terminal* terminal) {
 
     for (int groupNum = 0; groupNum < loadedNumGroups; groupNum++) {
         // Build key names as <field><groupNum>
-        char groupName[12] = {}; // "groupName", 1 digit, null terminator
-        char groupSize[12] = {}; // "groupSize", 1 digit, null terminator
-        char groupIps[11] = {}; // "groupSize", 1 digit, null terminator
+        char groupName[12]; // "groupName", 1 digit, null terminator
+        char groupSize[12]; // "groupSize", 1 digit, null terminator
+        char groupIps[11]; // "groupSize", 1 digit, null terminator
         sprintf(groupName, "groupName%d", groupNum);
         sprintf(groupSize, "groupSize%d", groupNum);
+        sprintf(groupIps, "groupIps%d", groupNum);
         // Assign pref values
         String loadedName = preferences.getString(groupName, groupName); // If the name somehow gets corrupted, use tag name
         int loadedGroupSize = preferences.getInt(groupSize);
         // Build ip list with format <ip1>,<ip2>,<ip3>...
-        char loadedIpList[10 + MAX_IP_LEN * MAX_GROUP_SIZE] = {}; // "groupIps", 1 digit, null terminator, 15 ips of 15 char + splitter
+        char loadedIpList[10 + MAX_IP_LEN * MAX_GROUP_SIZE]; // "groupIps", 1 digit, null terminator, 15 ips of 15 char + splitter
         String loadedIps = preferences.getString(groupIps);
         if (loadedIps.isEmpty()) {
             if (hasSerial) {
